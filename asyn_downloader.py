@@ -310,8 +310,8 @@ def format_size(size):
 
 if __name__ == '__main__':
 
-    SESSDATA = 'eaf00f06%2C1583914773%2Cc7708f21'
-    quality = 116
+    SESSDATA = 'xx'
+    quality = 112
     fname = './test.flv'
 
     url = input('Please input the url of the video: ')
