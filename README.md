@@ -1,5 +1,5 @@
 # AsyncBilibiliDownloader
-异步bilibili下载器，支持下载视频和番剧，基于协程，速度飞快～
+异步bilibili下载器，支持下载视频和番剧，基于`aiohttp`和`asyncio`的协程下载，速度飞快～
 
 ### 使用
 - 如果下载视频，需实例化`VideoDownloader`类；如果下载番剧，需实例化`BangumiDownloader`类。
@@ -16,4 +16,5 @@
 - `timeout`: 单个协程下载的时间限制，超出将重试。
 
 ### 说明
-`max_tasks`和`chunk_size`均不宜设置过大。建议设置两者的乘积为网络带宽大小（单位字节）。
+- `max_tasks`和`chunk_size`均不宜设置过大。建议设置两者的乘积为网络带宽大小（单位字节）。
+- 建议使用Python3.6版本，Python3.7版本中有bug，可能会导致`aiohttp`中SSL验证失败。
