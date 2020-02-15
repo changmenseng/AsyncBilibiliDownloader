@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 # -*- coding:utf-8 -*-
 
+from collections import deque
 import aiofiles
 import asyncio
 import aiohttp
@@ -9,6 +10,7 @@ import bisect
 import json
 import time
 import re
+import os
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s', datefmt='%H:%M:%S')
 
@@ -42,6 +44,9 @@ class _BaseDownloader:
         self.max_tasks = max_tasks
         self.chunk_size = chunk_size
 
+        if os.path.exists(fname):
+            os.remove(fname)
+
         self.queue = asyncio.Queue()
         if sess_data is None:
             cookies = None
@@ -64,14 +69,14 @@ class _BaseDownloader:
         self.subtitle = ''
         self.blocks = []
         self.content = b''
-        self._ordered_chunks = []
+        self._ordered_chunks = deque()
 
         self._timestamp = 0
         self._download_start_time = 0
         self._current_size = 0
         self._size = 0
 
-        self._nexts = []
+        self._nexts = deque()
         self._fileobj = None
 
         raise NotImplementedError('Don\'t use _BaseDownloader directly!')
@@ -139,9 +144,9 @@ class _BaseDownloader:
                 if self._nexts[0] == (order, start):
                     # 如果是接下来要保存的元素，则写入
                     logging.debug('Writing chunk{}[{}-{}] ...'.format(order, start, end))
-                    self._ordered_chunks = self._ordered_chunks[1:]
+                    self._ordered_chunks.popleft()
                     await self._fileobj.write(chunk)
-                    self._nexts = self._nexts[1:]
+                    self._nexts.popleft()
                     logging.debug('Chunk{}[{}-{}] is written.'.format(order, start, end))
                 else:
                     break
@@ -211,7 +216,7 @@ class _BaseDownloader:
             await self._write()
             self.queue.task_done()
 
-            mem_size = sum([len(item[-1]) for item in self._ordered_chunks])
+            mem_size = len(self._ordered_chunks) * self.chunk_size
             if mem_size > 52428800:
                 # 如果堆积在内存中的数据大于50MB
                 logging.warning('There are {} data in memory.'.format(format_size(mem_size)))
@@ -233,7 +238,6 @@ class _BaseDownloader:
         while True:
             try:
                 resp = await self._get_check(206, obj_url, headers)
-                # resp = await self.session.get(obj_url, headers=headers)
             except asyncio.TimeoutError as e:
                 logging.warning('TimeoutError raised when downloading chunk{}[{}-{}]. Retring ...'.format(order, start, end))
                 continue
@@ -354,8 +358,8 @@ if __name__ == '__main__':
     quality = 112
     fname = './test.flv'
     page = 1
-    max_tasks = 15
-    chunk_size = 1048576 # 1MB
+    max_tasks = 6
+    chunk_size = 524288 # 0.5MB
     timeout = 10
 
     url = input('Please input the url of the video: ')
