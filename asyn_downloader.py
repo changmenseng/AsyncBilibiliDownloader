@@ -341,11 +341,13 @@ def format_size(size):
 
 if __name__ == '__main__':
 
-    SESSDATA = 'c0435d42%2C1584095568%2C6a4d5c21'
+    # SESSDATA = 'c0435d42%2C1584095568%2C6a4d5c21'
+    SESSDATA = 'xx'
     quality = 112
     fname = './test.flv'
 
-    url = input('Please input the url of the video: ')
+    # url = input('Please input the url of the video: ')
+    url = 'https://www.bilibili.com/video/av88649175'
 
     try:
         aid = re.search('av(\d+)', url).group(1)
