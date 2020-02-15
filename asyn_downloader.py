@@ -319,7 +319,7 @@ if __name__ == '__main__':
     try:
         aid = re.search('av(\d+)', url).group(1)
         downloader = VideoDownloader(aid, quality, fname, sess_data=SESSDATA)
-        download.run()
+        downloader.run()
     except AttributeError:
         try:
             ep_id = re.search('ep(\d+)', url).group(1)
