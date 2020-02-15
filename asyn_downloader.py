@@ -45,6 +45,7 @@ class _BaseDownloader:
         self.chunk_size = chunk_size
 
         if os.path.exists(fname):
+            logging.warning('{} already exists, the file will be deleted.')
             os.remove(fname)
 
         self.queue = asyncio.Queue()
@@ -228,7 +229,7 @@ class _BaseDownloader:
             self._timestamp = now
             avg_speed = self._current_size / ((now - self._download_start_time))
             print(' ' * 100, end='\r')
-            print('Progress : {}/{}({:>5.2f}%) | Sudden speed : {}/s | Average speed : {}/s'.format(format_size(self._current_size), format_size(self._size), self._current_size * 100 / self._size, format_size(sudden_speed), format_size(avg_speed)), end='\r')
+            print('Progress : {}/{}({:>5.2f}%) | Speed : {}/s | Avg speed : {}/s'.format(format_size(self._current_size), format_size(self._size), self._current_size * 100 / self._size, format_size(sudden_speed), format_size(avg_speed)), end='\r')
 
 
     async def _download_chunk(self, order, obj_url, start, end):
@@ -353,8 +354,7 @@ def format_size(size):
 
 if __name__ == '__main__':
 
-    SESSDATA = 'c0435d42%2C1584095568%2C6a4d5c21'
-    # SESSDATA = 'xx'
+    SESSDATA = 'xx'
     quality = 112
     fname = './test.flv'
     page = 1
@@ -363,7 +363,6 @@ if __name__ == '__main__':
     timeout = 10
 
     url = input('Please input the url of the video: ')
-    # url = 'https://www.bilibili.com/video/av88649175'
 
     try:
         aid = re.search('av(\d+)', url).group(1)
@@ -376,6 +375,3 @@ if __name__ == '__main__':
             downloader.run()
         except AttributeError:
             logging.error('Wrong url format.')
-
-def hello():
-    print('hello world')
