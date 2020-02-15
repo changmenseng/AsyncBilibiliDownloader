@@ -1,12 +1,16 @@
 #!/usr/bin/env python
 # -*- coding:utf-8 -*-
 
+from collections import deque
+import aiofiles
 import asyncio
 import aiohttp
 import logging
+import bisect
 import json
 import time
 import re
+import os
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s', datefmt='%H:%M:%S')
 
@@ -40,6 +44,9 @@ class _BaseDownloader:
         self.max_tasks = max_tasks
         self.chunk_size = chunk_size
 
+        if os.path.exists(fname):
+            os.remove(fname)
+
         self.queue = asyncio.Queue()
         if sess_data is None:
             cookies = None
@@ -62,12 +69,15 @@ class _BaseDownloader:
         self.subtitle = ''
         self.blocks = []
         self.content = b''
-        self._chunks = []
+        self._ordered_chunks = deque()
 
         self._timestamp = 0
         self._download_start_time = 0
         self._current_size = 0
         self._size = 0
+
+        self._nexts = deque()
+        self._fileobj = None
 
         raise NotImplementedError('Don\'t use _BaseDownloader directly!')
 
@@ -110,9 +120,15 @@ class _BaseDownloader:
             self.blocks.append((order, size, obj_urls))
             self._size += size
 
+        self.blocks.sort(key=lambda x: x[0])
+
         if len(infos['durl']) > 1:
             logging.warning('There are {} sub-flv files. This may cause some unexcepted errors.'.format(len(infos['durl'])))
 
+        return 0
+
+    async def _get_file_obj(self):
+        self._fileobj = await aiofiles.open(fname, mode='ab+')
         return 0
 
     async def _prepare(self):
@@ -120,6 +136,24 @@ class _BaseDownloader:
             Get the download link.
         '''
         raise NotImplementedError('Don\'t use _BaseDownloader directly!')
+
+    async def _write(self):
+        try:
+            while True:
+                order, start, end, chunk = self._ordered_chunks[0]
+                if self._nexts[0] == (order, start):
+                    # 如果是接下来要保存的元素，则写入
+                    logging.debug('Writing chunk{}[{}-{}] ...'.format(order, start, end))
+                    self._ordered_chunks.popleft()
+                    await self._fileobj.write(chunk)
+                    self._nexts.popleft()
+                    logging.debug('Chunk{}[{}-{}] is written.'.format(order, start, end))
+                else:
+                    break
+        except IndexError:
+            pass
+
+        return 0
 
     def _add_to_queue(self):
         logging.debug('Adding item to queue ...')
@@ -133,13 +167,14 @@ class _BaseDownloader:
                 start = i * self.chunk_size
                 end = min((i + 1) * self.chunk_size - 1, size - 1)
                 self.queue.put_nowait((order, obj_url, start, end))
+                self._nexts.append((order, start))
         logging.debug('Add complete.')
 
     async def download(self):
         '''
-            Main coroutine. Tha main coroutine should handle the exception raised by sub-coroutines.
+            Main coroutine. The main coroutine should handle the exception raised by sub-coroutines.
         '''
-        
+
         # Get infos.
         logging.info('Preparing ...')
         try:
@@ -165,11 +200,11 @@ class _BaseDownloader:
         await self.session.close()
 
         # Save.
-        self._chunks.sort(key=lambda x: (x[0], x[1]))
-        self.content = b''.join([chunk[-1] for chunk in self._chunks])
-        with open(self.fname, 'wb') as f:
-            f.write(self.content)
+
+        assert len(self._ordered_chunks) == 0
+        assert len(self._nexts) == 0
         logging.info('Written in {}'.format(self.fname))
+        self._fileobj.close()
 
         return 0
 
@@ -177,8 +212,14 @@ class _BaseDownloader:
         while True:
             order, obj_url, start, end = await self.queue.get()
             chunk = await self._download_chunk(order, obj_url, start, end)
-            self._chunks.append((order, start, chunk))
+            bisect.insort(self._ordered_chunks, (order, start, end, chunk))
+            await self._write()
             self.queue.task_done()
+
+            mem_size = len(self._ordered_chunks) * self.chunk_size
+            if mem_size > 52428800:
+                # 如果堆积在内存中的数据大于50MB
+                logging.warning('There are {} data in memory.'.format(format_size(mem_size)))
 
             # 计算速度
             self._current_size += len(chunk)
@@ -189,6 +230,7 @@ class _BaseDownloader:
             print(' ' * 100, end='\r')
             print('Progress : {}/{}({:>5.2f}%) | Sudden speed : {}/s | Average speed : {}/s'.format(format_size(self._current_size), format_size(self._size), self._current_size * 100 / self._size, format_size(sudden_speed), format_size(avg_speed)), end='\r')
 
+
     async def _download_chunk(self, order, obj_url, start, end):
         logging.debug('Downloading chunk{}[{}-{}] ...'.format(order, start, end))
         headers = self.headers.copy()
@@ -196,7 +238,6 @@ class _BaseDownloader:
         while True:
             try:
                 resp = await self._get_check(206, obj_url, headers)
-                # resp = await self.session.get(obj_url, headers=headers)
             except asyncio.TimeoutError as e:
                 logging.warning('TimeoutError raised when downloading chunk{}[{}-{}]. Retring ...'.format(order, start, end))
                 continue
@@ -248,6 +289,7 @@ class VideoDownloader(_BaseDownloader):
         return 'https://api.bilibili.com/x/player/playurl?avid={}&cid={}&qn={}'.format(self.aid, self.cid, self.quality)
 
     async def _prepare(self):
+        await self._get_file_obj()
         await self._get_cid()
         await self._get_download_url()
         
@@ -294,6 +336,7 @@ class BangumiDownloader(_BaseDownloader):
         return 'https://api.bilibili.com/pgc/player/web/playurl?ep_id={}&qn={}'.format(self.ep_id, self.quality)
 
     async def _prepare(self):
+        await self._get_file_obj()
         await self._get_download_url()
         return 0
 
@@ -310,22 +353,29 @@ def format_size(size):
 
 if __name__ == '__main__':
 
-    SESSDATA = 'xx'
+    SESSDATA = 'c0435d42%2C1584095568%2C6a4d5c21'
+    # SESSDATA = 'xx'
     quality = 112
     fname = './test.flv'
+    page = 1
+    max_tasks = 6
+    chunk_size = 524288 # 0.5MB
+    timeout = 10
 
     url = input('Please input the url of the video: ')
+    # url = 'https://www.bilibili.com/video/av88649175'
 
     try:
         aid = re.search('av(\d+)', url).group(1)
-        downloader = VideoDownloader(aid, quality, fname, sess_data=SESSDATA)
+        downloader = VideoDownloader(aid, quality, fname, page, max_tasks, chunk_size, SESSDATA, timeout)
         downloader.run()
     except AttributeError:
         try:
             ep_id = re.search('ep(\d+)', url).group(1)
-            downloader = BangumiDownloader(ep_id, quality, fname, sess_data=SESSDATA)
+            downloader = BangumiDownloader(ep_id, quality, fname, max_tasks, chunk_size, SESSDATA, timeout)
             downloader.run()
         except AttributeError:
             logging.error('Wrong url format.')
 
-
+def hello():
+    print('hello world')
