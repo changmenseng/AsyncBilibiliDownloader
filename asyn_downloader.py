@@ -10,7 +10,7 @@ import json
 import time
 import re
 
-logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s', datefmt='%H:%M:%S')
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s', datefmt='%H:%M:%S')
 
 class WrongPageError(Exception):
     pass
@@ -132,6 +132,24 @@ class _BaseDownloader:
         '''
         raise NotImplementedError('Don\'t use _BaseDownloader directly!')
 
+    async def _write(self):
+        try:
+            while True:
+                order, start, end, chunk = self._ordered_chunks[0]
+                if self._nexts[0] == (order, start):
+                    # 如果是接下来要保存的元素，则写入
+                    logging.debug('Writing chunk{}[{}-{}] ...'.format(order, start, end))
+                    self._ordered_chunks = self._ordered_chunks[1:]
+                    await self._fileobj.write(chunk)
+                    self._nexts = self._nexts[1:]
+                    logging.debug('Chunk{}[{}-{}] is written.'.format(order, start, end))
+                else:
+                    break
+        except IndexError:
+            pass
+
+        return 0
+
     def _add_to_queue(self):
         logging.debug('Adding item to queue ...')
         for order, size, obj_urls in self.blocks:
@@ -177,14 +195,9 @@ class _BaseDownloader:
         await self.session.close()
 
         # Save.
-        print(len(self._ordered_chunks))
-        print(len(self._nexts))
-        # assert len(self._ordered_chunks) == 0
-        # assert len(self._nexts) == 0
-        # self._ordered_chunks.sort(key=lambda x: (x[0], x[1]))
-        # self.content = b''.join([chunk[-1] for chunk in self._ordered_chunks])
-        # with open(self.fname, 'wb') as f:
-        #     f.write(self.content)
+
+        assert len(self._ordered_chunks) == 0
+        assert len(self._nexts) == 0
         logging.info('Written in {}'.format(self.fname))
         self._fileobj.close()
 
@@ -194,20 +207,14 @@ class _BaseDownloader:
         while True:
             order, obj_url, start, end = await self.queue.get()
             chunk = await self._download_chunk(order, obj_url, start, end)
-            bisect.insort(self._ordered_chunks, (order, start, chunk))
-
-            try:
-                while self._nexts[0] == (self._ordered_chunks[0][0], self._ordered_chunks[0][1]):
-                    # 如果是接下来要保存的元素，则写入
-                    logging.debug('Writing chunk{}[{}-] ...'.format(self._nexts[0][0], self._nexts[0][1]))
-                    self._ordered_chunks = self._ordered_chunks[1:]
-                    await self._fileobj.write(chunk)
-                    logging.debug('Chunk{}[{}-] is written.'.format(self._nexts[0][0], self._nexts[0][1]))
-                    self._nexts = self._nexts[1:]
-            except:
-                pass
-
+            bisect.insort(self._ordered_chunks, (order, start, end, chunk))
+            await self._write()
             self.queue.task_done()
+
+            mem_size = sum([len(item[-1]) for item in self._ordered_chunks])
+            if mem_size > 52428800:
+                # 如果堆积在内存中的数据大于50MB
+                logging.warning('There are {} data in memory.'.format(format_size(mem_size)))
 
             # 计算速度
             self._current_size += len(chunk)
@@ -217,6 +224,7 @@ class _BaseDownloader:
             avg_speed = self._current_size / ((now - self._download_start_time))
             print(' ' * 100, end='\r')
             print('Progress : {}/{}({:>5.2f}%) | Sudden speed : {}/s | Average speed : {}/s'.format(format_size(self._current_size), format_size(self._size), self._current_size * 100 / self._size, format_size(sudden_speed), format_size(avg_speed)), end='\r')
+
 
     async def _download_chunk(self, order, obj_url, start, end):
         logging.debug('Downloading chunk{}[{}-{}] ...'.format(order, start, end))
@@ -341,22 +349,26 @@ def format_size(size):
 
 if __name__ == '__main__':
 
-    # SESSDATA = 'c0435d42%2C1584095568%2C6a4d5c21'
-    SESSDATA = 'xx'
+    SESSDATA = 'c0435d42%2C1584095568%2C6a4d5c21'
+    # SESSDATA = 'xx'
     quality = 112
     fname = './test.flv'
+    page = 1
+    max_tasks = 15
+    chunk_size = 1048576 # 1MB
+    timeout = 10
 
-    # url = input('Please input the url of the video: ')
-    url = 'https://www.bilibili.com/video/av88649175'
+    url = input('Please input the url of the video: ')
+    # url = 'https://www.bilibili.com/video/av88649175'
 
     try:
         aid = re.search('av(\d+)', url).group(1)
-        downloader = VideoDownloader(aid, quality, fname, sess_data=SESSDATA)
+        downloader = VideoDownloader(aid, quality, fname, page, max_tasks, chunk_size, SESSDATA, timeout)
         downloader.run()
     except AttributeError:
         try:
             ep_id = re.search('ep(\d+)', url).group(1)
-            downloader = BangumiDownloader(ep_id, quality, fname, sess_data=SESSDATA)
+            downloader = BangumiDownloader(ep_id, quality, fname, max_tasks, chunk_size, SESSDATA, timeout)
             downloader.run()
         except AttributeError:
             logging.error('Wrong url format.')
