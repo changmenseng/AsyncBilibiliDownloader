@@ -9,9 +9,9 @@
 ### 测速
 我的网络带宽大约为150Mbps，下图为测速结果：
 ![image](./imgs/speed_test.jpg)
-使用you-get和本下载器（`max_tasks`为20，`chunk_size`为500KB, `timeout`为10秒）下载视频[【敖厂长】1989年日本最早生存恐怖游戏 真的很恐怖吗?](https://www.bilibili.com/video/av89685634)（121.02MB）的速度对比图如下：
+使用you-get和本下载器（`max_tasks`为20，`chunk_size`为500KB, `timeout`为10秒）下载1080P视频[【敖厂长】1989年日本最早生存恐怖游戏 真的很恐怖吗?](https://www.bilibili.com/video/av89685634)（121.02MB）的平均速度对比图如下：
 ![image](./imgs/compare.png)
-两者差距非常大，本下载器下载速度是you-get的19倍多。
+两者差距非常大，本下载器下载速度是you-get的19倍多，达到16.18MB/s，基本拉满带宽（17.87MB/s）。
 
 ### 使用
 - 如果下载视频，需实例化`VideoDownloader`类；如果下载番剧，需实例化`BangumiDownloader`类。
