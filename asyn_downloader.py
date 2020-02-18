@@ -45,7 +45,7 @@ class _BaseDownloader:
         self.chunk_size = chunk_size
 
         if os.path.exists(fname):
-            logging.warning('{} already exists, the file will be deleted.')
+            logging.warning('{} already exists, the file will be deleted.'.format(fname))
             os.remove(fname)
 
         self.queue = asyncio.Queue()
@@ -129,7 +129,7 @@ class _BaseDownloader:
         return 0
 
     async def _get_file_obj(self):
-        self._fileobj = await aiofiles.open(fname, mode='ab+')
+        self._fileobj = await aiofiles.open(self.fname, mode='ab+')
         return 0
 
     async def _prepare(self):
