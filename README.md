@@ -3,15 +3,15 @@
 
 ### 特点
 - 轻量级，简单易用，只使用一个线程，开销很小。
-- 使用协程同时从多个源下载（b站几乎所有视频都有至少一个备用源），速度很快，基本上能把带宽拉满。
-- 使用异步方式写文件，下载速度几乎不受磁盘读写速度影响。
+- 使用协程同时从多个源下载（b站几乎所有视频都有至少一个备用源），使用了非阻塞的异步下载，发出请求后不用等待。因此速度很快，基本上能把带宽拉满。
+- 使用非阻塞异步方式写文件，下载速度几乎不受磁盘读写速度影响。边下载边写文件，不是下好后存在内存中然后一次性写入，因此不管目标文件有多大，内存占用都很低（超出50MB时会有警告，一般很少超过50MB）。
 
 ### 测速
 我的网络带宽大约为150Mbps，下图为测速结果：
 ![image](./imgs/speed_test.jpg)
-使用you-get和本下载器（`max_tasks`为20，`chunk_size`为500KB, `timeout`为10秒）下载1080P视频[【敖厂长】1989年日本最早生存恐怖游戏 真的很恐怖吗?](https://www.bilibili.com/video/av89685634)（121.02MB）的平均速度对比图如下：
-![image](./imgs/compare.png)
-两者差距非常大，本下载器下载速度是you-get的19倍多，达到16.18MB/s，基本拉满带宽（17.87MB/s）。
+这里使用[you-get](https://github.com/soimort/you-get)、[youtube-dl](https://github.com/ytdl-org/youtube-dl)、[Henryhaohao/Bilibili_video_download](https://github.com/Henryhaohao/Bilibili_video_download)和本下载器`max_tasks`为20，`chunk_size`为500KB, `timeout`为10秒）下载1080P视频[【敖厂长】1989年日本最早生存恐怖游戏 真的很恐怖吗?](https://www.bilibili.com/video/av89685634)（121.02MB）。平均速度如下：
+![image](./imgs/compare.jpg)
+可以看出，本下载器的的下载速度超过其他下载器20倍以上。
 
 ### 使用
 - 如果下载视频，需实例化`VideoDownloader`类；如果下载番剧，需实例化`BangumiDownloader`类。
